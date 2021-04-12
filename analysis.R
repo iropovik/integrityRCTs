@@ -34,7 +34,8 @@ dat <- dat %>%
   mutate(sd = ifelse(is.na(sd) & !is.na(SE), SE*sqrt(n), sd),
          varType = 1,
          studyID = paste(paper, "/", sample, sep = ""),
-         trialID = as.numeric(paper) + as.numeric(sample)/100) %>%
+         trialID = as.numeric(paper) + as.numeric(sample)/100,
+         rowNo = 1:nrow(dat)) %>%
   group_by(trialID) %>% mutate(id = cur_group_id()) %>% ungroup()
 
 data <- dat %>% select(id, variable, group, n, mean, sd, decimalM, decimalSD, varType, studyID) %>% as.data.frame()
@@ -181,6 +182,17 @@ for(i in 1:dim(excessSmallSDs)[1]){
 }
 rownames(selectRangeSD) <- rownames(pMC)
 selectRangeSD
+
+
+# GRIM & GRIMMER inconsistencies ------------------------------------------
+
+grimAndGrimmer(dat)
+# proportion of GRIM (M) inconsistencies
+paste(round((table(dat$grim)[1]/table(!is.na(dat$discreteItemsCount))[2])*100, 2), "%")
+# proportion of GRIMMER (SD) inconsistencies
+paste(round(((table(dat$grimmer)[1] - table(dat$grim)[1])/table(!is.na(dat$discreteItemsCount))[2])*100, 2), "%")
+# proportion of GRIM or GRIMMER (M | SD) inconsistencies
+paste(round((table(dat$grimmer)[1]/table(!is.na(dat$discreteItemsCount))[2])*100, 2), "%")
 
 
 ######################################
