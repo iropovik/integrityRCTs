@@ -145,33 +145,42 @@ ggplot(data = plotData, aes(x = pvalues, group = Distribution, fill = Distributi
   geom_density(adjust = 0.5, alpha = .5) + theme_classic()
 
 # lack of variability in SDs
-nSim <- 3
+nSim <- 10 # define the number of simulations
 theoreticalSDSD <- theoreticalRangeSD <- empiricalSDSD <- empiricalRangeSD <- data.frame(NA)
 listTheoreticalSDSD <- listTheoreticalRangeSD <- list(NA)
 set.seed(1)
 for(n in 1:nSim){
   for(i in 1:max(data$id)){
     for(j in 1:max(data$variable)){
-      d <- data %>% filter(id == i, variable == j)
-      pooledSD <- mean(d$sd)
-      empiricalSDSD[i,j] <- sd(d$sd)
-      empiricalRangeSD[i,j] <- diff(range(d$sd))
+      d <- data %>% filter(id == i, variable == j) # subset rows for each variable within each independent sample
+      pooledSD <- mean(d$sd) # compute pooled SD (assuming the null)
+      empiricalSDSD[i,j] <- sd(d$sd) # compute sd of sd
+      empiricalRangeSD[i,j] <- diff(range(d$sd)) # compute range of sd
       theoreticalSDSD[i,j] <- d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% sd()
       theoreticalRangeSD[i,j] <- d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% range() %>% diff()
     }
   }
   listTheoreticalSDSD[[n]] <- theoreticalSDSD
-  listTheoreticalRangeSD[[n]] <- theoreticalRangeSD
+  listTheoreticalRangeSD[[n]] <- theoreticalRangeSD %>% mutate_if(is.numeric, list(~na_if(., -Inf)))
 }
 
 # average over lists of sdsds and compute the probability of observing equal or smaller degree of variability in SDs
-excessSmallSDs <-  Reduce("+", lapply(listTheoreticalSDSD, function(x){x <= empiricalSDSD}))/nSim
-excessSmallRanges <-  Reduce("+", lapply(listTheoreticalRangeSD, function(x){x <= empiricalRangeSD}))/nSim
+# higher probability = smaller than expected variability
+excessSmallSDs <-  Reduce("+", lapply(listTheoreticalSDSD, function(x){x >= empiricalSDSD}))/nSim
+excessSmallRanges <-  Reduce("+", lapply(listTheoreticalRangeSD, function(x){x >= empiricalRangeSD}))/nSim
 rownames(excessSmallSDs) <- rownames(excessSmallRanges) <- rownames(pMC)
 excessSmallSDs
 excessSmallRanges
 
-
+# find the smaller p-value for the SD and Ranges matrices (picking the less extreme p-value)
+selectRangeSD <- matrix(nrow = dim(excessSmallSDs)[1], ncol = dim(excessSmallSDs)[2])
+for(i in 1:dim(excessSmallSDs)[1]){
+  for(j in 1:dim(excessSmallSDs)[2]){
+    selectRangeSD[i,j] <- ifelse(is.na(excessSmallSDs[i,j]), NA, c(excessSmallSDs[i,j], excessSmallRanges[i,j])[which.max(abs(c(excessSmallSDs[i,j], excessSmallRanges[i,j]) - 1))])
+  }
+}
+rownames(selectRangeSD) <- rownames(pMC)
+selectRangeSD
 
 
 ######################################
