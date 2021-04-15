@@ -50,7 +50,6 @@ set.seed(1)
 # ps <- sim_distr(m = 10000, data = data, plot_flag = F) #6.65115min
 ps <- readRDS("ps.RDS") # nizke p <- priliz rozdielne, vysoke p, priliz rovnake
 
-<<<<<<< HEAD
 # Compensate for the lack of precision in MC calculation in p-values
 ps <- ifelse(as.matrix(ps) == 0, .000005, ifelse(as.matrix(ps) == 1, .999995, as.matrix(ps)))
 
@@ -62,30 +61,17 @@ paste(round(table(as.matrix(ps) < .05)[2]/sum(table(as.matrix(ps) < .05))*100, 3
 # choose a single p-value for every independent sample and permute
 set.seed(1)
 nIterations <- 100000
-=======
-# how many significant
-paste(round(table(as.matrix(ps) < .05)[2]/sum(table(as.matrix(ps) < .05))*100, 3), "%")
 
-# Analysis based on p-values for individual within-sample variables --------
-
-# choose a single p-value for every independent sample and permute
-
-set.seed(1)
-nIterations <- 10000
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 pSets <- matrix(nrow = nrow(ps), ncol = nIterations)
 for(i in 1:nIterations){  # excluding significant p-values and and rescaling the non-significant p-values to (0, 1)
   pSets[,i] <- apply(ifelse(as.matrix(ps) < .05, NA, (as.matrix(ps)-0.05)/0.95), 1,
                      function(x){sample(x[!is.na(x)], size = 1)})
 }
 rownames(pSets) <- rownames(ps)
-<<<<<<< HEAD
-=======
 
 # Compensate for the lack of precision in MC calculation in p-values
 pSets <- ifelse(as.matrix(pSets) == 0, .00001, ifelse(as.matrix(pSets) == 1, .99999, as.matrix(pSets)))
 
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 # saveRDS(pSets, "pSets.RDS")
 # pSets <- readRDS("pSets.RDS")
 
@@ -120,7 +106,6 @@ pSetsFisher <- apply(pSets, 2, function(x){
 
 ggplot(mapping = aes(pSetsFisher, fill = pSetsFisher)) + geom_density(adjust = 0.7, fill = "#4b88ad", alpha = .5) + theme_classic()
 
-
 # show that the distribution of stouffer's p is uniform under uniform distribution of p-values
 # yy <- NA
 # for(i in 1:100){
@@ -132,11 +117,7 @@ ggplot(mapping = aes(pSetsFisher, fill = pSetsFisher)) + geom_density(adjust = 0
 # Combining the p-values into a study-level p-value -----------------------
 psCombined <- list()
 for(i in gsub("/.*", "", rownames(ps))){
-<<<<<<< HEAD
   psCombined[[i]] <- as.data.frame(ps) %>% rownames_to_column() %>% filter(grepl(i, rowname, fixed = TRUE)) %>% select(-rowname) %>% unlist()
-=======
-  psCombined[[i]] <- ps %>% rownames_to_column() %>% filter(grepl(i, rowname, fixed = TRUE)) %>% select(-rowname) %>% unlist()
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 }
 psCombined <- lapply(psCombined, function(x){as.numeric(x[!is.na(x)])})
 
@@ -148,17 +129,10 @@ for(i in 1:length(psCombined)){
   diag(corMatrix) <- 1
   pStudyStouffer[[i]] <- tryCatch(stouffer(1 - psCombined[[i]],
                                            R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
-<<<<<<< HEAD
                                            adjust = "empirical", size = 10000)$p, error = function(e) NULL)
   pStudyFisher[[i]] <- tryCatch(fisher(1 - psCombined[[i]],
                                        R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
                                        adjust = "empirical", size = 10000)$p, error = function(e) NULL)
-=======
-                                           adjust = "empirical", size = 1000)$p, error = function(e) NULL)
-  pStudyFisher[[i]] <- tryCatch(fisher(1 - psCombined[[i]],
-                                       R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
-                                       adjust = "empirical", size = 1000)$p, error = function(e) NULL)
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 }
 names(pStudyStouffer) <- names(pStudyFisher) <- rownames(psCombined)
 pStudyStouffer <- unlist(pStudyStouffer)
@@ -169,15 +143,9 @@ list("Probabilities by Stouffer's method" =
           "<.01" = prop.table(table(pStudyStouffer<.01))[2]*100,
           "<.05" = prop.table(table(pStudyStouffer<.05))[2]*100),
      "Probabilities by Fisher's method" =
-<<<<<<< HEAD
        list("<.001" = prop.table(table(pStudyFisher<.001))[2]*100,
           "<.01" = prop.table(table(pStudyFisher<.01))[2]*100,
           "<.05" = prop.table(table(pStudyFisher<.05))[2]*100))
-=======
-       list("<.001" = prop.table(table(pStudyStouffer<.001))[2]*100,
-          "<.01" = prop.table(table(pStudyStouffer<.01))[2]*100,
-          "<.05" = prop.table(table(pStudyStouffer<.05))[2]*100))
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 
 (distrTests <- list(
   "K-S for Stouffer's p" = ks.test(pStudyStouffer,"punif", 0, 1),
@@ -191,11 +159,7 @@ qqtest(pStudyStouffer, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0,
                yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
                bty = "n", nreps = 100000, cex = .5)
 
-<<<<<<< HEAD
 qqtest(pStudyFisher, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
-=======
-qqtest::qqtest(pStudyFisher, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
                xAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
                yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
                bty = "n", nreps = 100000, cex = .5)
@@ -210,8 +174,6 @@ plotData <- as.data.frame(cbind("pvalues" = c(pStudyStouffer, y), "Distribution"
 plotData$Distribution <- as.factor(plotData$Distribution)
 ggplot(data = plotData, aes(x = pvalues, group = Distribution, fill = Distribution)) +
   geom_density(alpha = .5) + theme_classic()
-<<<<<<< HEAD
-
 
 # Lack of variability in SDs ----------------------------------------------
 # To do: speed up
@@ -225,22 +187,6 @@ ggplot(data = plotData, aes(x = pvalues, group = Distribution, fill = Distributi
 # d %>% rowwise() %>% rnormSdFun()
 
 nSim <- 1000 # define the number of simulations
-=======
-
-
-# Lack of variability in SDs ----------------------------------------------
-# To do: speed up
-# rnormSdFun <- function(df){
-#   sd(rnorm(n = df[["n"]],mean =  df[["mean"]], sd = pooledSD))
-# }
-
-# set.seed(1)
-# d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% sd()
-# set.seed(1)
-# d %>% rowwise() %>% rnormSdFun()
-
-nSim <- 10 # define the number of simulations
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 theoreticalSDSD <- theoreticalRangeSD <- empiricalSDSD <- empiricalRangeSD <- data.frame(NA)
 listTheoreticalSDSD <- listTheoreticalRangeSD <- list(NA)
 set.seed(1)
@@ -279,7 +225,6 @@ excessSmallSDs
 excessSmallRanges
 
 # find the smaller p-value for the SD and Ranges matrices (picking the less extreme p-value)
-<<<<<<< HEAD
 # insuffVariability <- matrix(nrow = dim(excessSmallSDs)[1], ncol = dim(excessSmallSDs)[2])
 # for(i in 1:dim(excessSmallSDs)[1]){
 #   for(j in 1:dim(excessSmallSDs)[2]){
@@ -353,25 +298,6 @@ qqtest(pSdFisher, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
                xAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
                yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
                bty = "n", nreps = 100000, cex = .5)
-=======
-insuffVariability <- matrix(nrow = dim(excessSmallSDs)[1], ncol = dim(excessSmallSDs)[2])
-for(i in 1:dim(excessSmallSDs)[1]){
-  for(j in 1:dim(excessSmallSDs)[2]){
-    insuffVariability[i,j] <- ifelse(is.na(excessSmallSDs[i,j]), NA, c(excessSmallSDs[i,j], excessSmallRanges[i,j])[which.max(abs(c(excessSmallSDs[i,j], excessSmallRanges[i,j]) - 1))])
-  }
-}
-rownames(insuffVariability) <- rownames(ps)
-insuffVariability
-
-# Average into trial-level probabilities
-studyInsuffVariability <- apply(insuffVariability, 1, mean, na.rm = T)
-names(studyInsuffVariability) <- rownames(ps)
-
-studyInsuffVariability
-pStudyStouffer
-
->>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
-
 
 # GRIM & GRIMMER inconsistencies ------------------------------------------
 
@@ -382,8 +308,6 @@ paste(round((table(dat$grim)[1]/table(!is.na(dat$discreteItemsCount))[2])*100, 2
 paste(round(((table(dat$grimmer)[1] - table(dat$grim)[1])/table(!is.na(dat$discreteItemsCount))[2])*100, 2), "%")
 # proportion of GRIM or GRIMMER (M | SD) inconsistencies
 paste(round((table(dat$grimmer)[1]/table(!is.na(dat$discreteItemsCount))[2])*100, 2), "%")
-
-
 
 ######################################
 # Graveyard
