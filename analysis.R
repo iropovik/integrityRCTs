@@ -14,7 +14,7 @@
 # libraries and settings --------------------------------------------------
 #knitr::opts_chunk$set(echo=FALSE, warning = FALSE)
 
-readRDS("workspace.RDS")
+load("workspace.RData")
 rm(list = ls())
 
 # install required R libraries if not installed already
@@ -60,18 +60,13 @@ paste(round(table(as.matrix(ps) < .05)[2]/sum(table(as.matrix(ps) < .05))*100, 3
 
 # choose a single p-value for every independent sample and permute
 set.seed(1)
-nIterations <- 100000
-
+nIterations <- 100
 pSets <- matrix(nrow = nrow(ps), ncol = nIterations)
 for(i in 1:nIterations){  # excluding significant p-values and and rescaling the non-significant p-values to (0, 1)
   pSets[,i] <- apply(ifelse(as.matrix(ps) < .05, NA, (as.matrix(ps)-0.05)/0.95), 1,
                      function(x){sample(x[!is.na(x)], size = 1)})
 }
 rownames(pSets) <- rownames(ps)
-
-# Compensate for the lack of precision in MC calculation in p-values
-pSets <- ifelse(as.matrix(pSets) == 0, .00001, ifelse(as.matrix(pSets) == 1, .99999, as.matrix(pSets)))
-
 # saveRDS(pSets, "pSets.RDS")
 # pSets <- readRDS("pSets.RDS")
 
@@ -174,6 +169,7 @@ plotData <- as.data.frame(cbind("pvalues" = c(pStudyStouffer, y), "Distribution"
 plotData$Distribution <- as.factor(plotData$Distribution)
 ggplot(data = plotData, aes(x = pvalues, group = Distribution, fill = Distribution)) +
   geom_density(alpha = .5) + theme_classic()
+
 
 # Lack of variability in SDs ----------------------------------------------
 # To do: speed up
