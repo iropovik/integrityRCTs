@@ -1,5 +1,5 @@
 #' ---
-#' title: "The prevalence of trauma, PTSD, and other mental health issues: evidence from a representative Slovak sample"
+#' title: "The integrity of data underlying randomized controlled studies of psychological and educational interventions"
 #' author: "Ivan Ropovik"
 #' date: "`r Sys.Date()`"
 #' output:
@@ -14,10 +14,14 @@
 # libraries and settings --------------------------------------------------
 #knitr::opts_chunk$set(echo=FALSE, warning = FALSE)
 
+readRDS("workspace.RDS")
 rm(list = ls())
 
 # install required R libraries if not installed already
-list.of.packages <- c("tidyverse", "magrittr", "devtools", "overlapping", "entropy", "metap", "MBESS", "CarletonStats", "goftest", "qqtest", "beepr")
+if (!requireNamespace("drat", quietly = TRUE)) install.packages("drat")
+drat::addRepo("daqana")
+
+list.of.packages <- c("tidyverse", "magrittr", "devtools", "overlapping", "entropy", "metap", "poolr", "MBESS", "CarletonStats", "goftest", "qqtest", "dqsample", "beepr")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 
@@ -29,53 +33,66 @@ source("functions.R")
 
 # read in the data
 dat <- read_delim("data/data.csv", ";", escape_double = FALSE, col_types = cols(paper = col_character(), sample = col_integer(), variable = col_integer(), group = col_integer(), nClusters = col_integer(), n = col_integer(), mean = col_double(), sd = col_double(), SE = col_double(), decimalM = col_integer(), decimalSD = col_integer(), discreteItemsCount = col_integer(), nPerCellAssumed = col_integer(), notes = col_character()), na = "NA", trim_ws = TRUE)
+
 # compute SD from SE
 dat <- dat %>%
-  mutate(sd = ifelse(is.na(sd) & !is.na(SE), SE*sqrt(n), sd),
+  mutate(sd = ifelse(is.na(sd) & !is.na(SE), round(SE*sqrt(n), decimalSD), sd),
          varType = 1,
          studyID = paste(paper, "/", sample, sep = ""),
          trialID = as.numeric(paper) + as.numeric(sample)/100,
          rowNo = 1:nrow(dat)) %>%
   group_by(trialID) %>% mutate(id = cur_group_id()) %>% ungroup()
 
-data <- dat %>% select(id, variable, group, n, mean, sd, decimalM, decimalSD, varType, studyID) %>% as.data.frame()
-data <- data[1:100,]
+data <- dat %>% select(id, variable, group, n, mean, sd, decimalM, decimalSD, varType, studyID) %>%  as.data.frame()
 
 # calculate p-values using Monte Carlo method
 set.seed(1)
-pMC <- sim_distr(m = 10000, data = data, plot_flag = F)
-# nizke p <- priliz rozdielne, vysoke p, priliz rovnake
+# ps <- sim_distr(m = 10000, data = data, plot_flag = F) #6.65115min
+ps <- readRDS("ps.RDS") # nizke p <- priliz rozdielne, vysoke p, priliz rovnake
 
-# calculate p-values using regular ANOVA method
-pAnova <- get_anova_p_vals(data)
+<<<<<<< HEAD
+# Compensate for the lack of precision in MC calculation in p-values
+ps <- ifelse(as.matrix(ps) == 0, .000005, ifelse(as.matrix(ps) == 1, .999995, as.matrix(ps)))
 
-# find the matrix value closer to .5
-ps <- matrix(nrow = dim(pMC)[1], ncol = dim(pMC)[2])
-for(i in 1:dim(pMC)[1]){
-  for(j in 1:dim(pMC)[2]){
-ps[i,j] <- ifelse(is.na(pMC[i,j]), NA, c(pMC[i,j], pAnova[i,j])[which.min(abs(c(pMC[i,j], pAnova[i,j]) - .5))])
-  }
-}
-rownames(ps) <- rownames(pMC)
-ps
+# how many significant
+paste(round(table(as.matrix(ps) < .05)[2]/sum(table(as.matrix(ps) < .05))*100, 3), "%")
 
+# Analysis based on p-values for individual within-sample variables --------
 
-# exclude significant p-values and and rescale the non-significant to (0, 1)
-ps <- ifelse(ps < .05, NA, (ps-0.05)/0.95)
+# choose a single p-value for every independent sample and permute
+set.seed(1)
+nIterations <- 100000
+=======
+# how many significant
+paste(round(table(as.matrix(ps) < .05)[2]/sum(table(as.matrix(ps) < .05))*100, 3), "%")
 
-# Analysis based on p-values for individual within-study variables --------
+# Analysis based on p-values for individual within-sample variables --------
 
-# choose a single p-value for every independent study and permute
-nIterations <- 1000
+# choose a single p-value for every independent sample and permute
+
+set.seed(1)
+nIterations <- 10000
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 pSets <- matrix(nrow = nrow(ps), ncol = nIterations)
-for(i in 1:nIterations){
-  pSets[,i] <- apply(ps, 1, function(x){sample(x[!is.na(x)], size = 1)})
+for(i in 1:nIterations){  # excluding significant p-values and and rescaling the non-significant p-values to (0, 1)
+  pSets[,i] <- apply(ifelse(as.matrix(ps) < .05, NA, (as.matrix(ps)-0.05)/0.95), 1,
+                     function(x){sample(x[!is.na(x)], size = 1)})
 }
-rownames(pSets) <- rownames(pMC)
+rownames(pSets) <- rownames(ps)
+<<<<<<< HEAD
+=======
+
+# Compensate for the lack of precision in MC calculation in p-values
+pSets <- ifelse(as.matrix(pSets) == 0, .00001, ifelse(as.matrix(pSets) == 1, .99999, as.matrix(pSets)))
+
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
+# saveRDS(pSets, "pSets.RDS")
+# pSets <- readRDS("pSets.RDS")
 
 # combine the permuted sets of p-values using Stouffer's method
+# low combined p-value means too small baseline difference, inconsistent with random sampling
 pSetsStouffer <- apply(pSets, 2, function(x){
-  1 - pnorm(sum(sapply(x, qnorm))/sqrt(length(x)))
+  1 - pnorm(sum(sapply(x, qnorm), na.rm = T)/sqrt(length(x[!is.na(x)])))
 })
 
 # average over the iterations and compute the sd
@@ -86,102 +103,274 @@ pSetsStouffer <- apply(pSets, 2, function(x){
 (waldsStouffer <- c("zWaldStouffer" = zStouffer <- (meanStouffer[1] - .5)/(meanStouffer[2]/sqrt(nIterations)),
                     "pWaldStouffer" = 2*pnorm(abs(as.numeric(zStouffer)), lower.tail = F)))
 
+ggplot(mapping = aes(pSetsStouffer, fill = pSetsStouffer)) + geom_density(adjust = 0.7, fill = "#4b88ad", alpha = .5) + theme_classic()
+
 # combine the permuted sets of p-values using Fisher's method
 pSetsFisher <- apply(pSets, 2, function(x){
-  pchisq(-2 * sum(log(x)), 2*length(x))
+  pchisq(-2 * sum(log(x), na.rm = T), 2*length(x[!is.na(x)]))
 })
 
 # average over the iterations and compute the sd
-(meanFisher <- c("Mean Stouffer's p over iterations" = mean(pSetsFisher),
-                  "SD of Stouffer's p over iterations" = sd(pSetsFisher)))
+(meanFisher <- c("Mean Fisher's p over iterations" = mean(pSetsFisher),
+                 "SD of Fisher's p over iterations" = sd(pSetsFisher)))
 
 # Wald's z-test for Fisher's method
 (waldsFisher <- c("zFisher" = zFisher <- (meanFisher[1] - .5)/(meanFisher[2]/sqrt(nIterations)),
                   "pFisher" = 2*pnorm(abs(as.numeric(zFisher)), lower.tail = F)))
 
-# Combining the p-values into a study-level p-value -----------------------
-assumedIntercorr <- .2
-pStudyStouffer <- NA
-pStudyFisher <- NA
-for(i in 1:nrow(ps)){# urobit aj korekciu na zaklade effective number of tests
-  corMatrix <- matrix(assumedIntercorr, nrow = sum(!is.na(ps[i,])), ncol = sum(!is.na(ps[i,])))
-  diag(corMatrix) <- 1
-  pStudyStouffer[i] <- stouffer(1 - as.numeric(na.omit(ps[i,])),
-                                R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
-                                adjust = "empirical", size = 100000)$p
-  pStudyFisher[i] <- fisher(1 - as.numeric(na.omit(ps[i,])),
-                                R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
-                                adjust = "empirical", size = 100000)$p
-}
-pStudyStouffer
-pStudyFisher
+ggplot(mapping = aes(pSetsFisher, fill = pSetsFisher)) + geom_density(adjust = 0.7, fill = "#4b88ad", alpha = .5) + theme_classic()
 
-distrTests <- list(
+
+# show that the distribution of stouffer's p is uniform under uniform distribution of p-values
+# yy <- NA
+# for(i in 1:100){
+#   xx <- runif(10000, 0, 1)
+#   yy[i] <- 1 - pnorm(sum(sapply(xx, qnorm), na.rm = T)/sqrt(length(xx[!is.na(xx)])))
+# }
+# hist(yy)
+
+# Combining the p-values into a study-level p-value -----------------------
+psCombined <- list()
+for(i in gsub("/.*", "", rownames(ps))){
+<<<<<<< HEAD
+  psCombined[[i]] <- as.data.frame(ps) %>% rownames_to_column() %>% filter(grepl(i, rowname, fixed = TRUE)) %>% select(-rowname) %>% unlist()
+=======
+  psCombined[[i]] <- ps %>% rownames_to_column() %>% filter(grepl(i, rowname, fixed = TRUE)) %>% select(-rowname) %>% unlist()
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
+}
+psCombined <- lapply(psCombined, function(x){as.numeric(x[!is.na(x)])})
+
+assumedIntercorr <- .3 # urobit aj korekciu na zaklade effective number of tests
+pStudyStouffer <- list(NA)
+pStudyFisher <- list(NA)
+for(i in 1:length(psCombined)){
+  corMatrix <- matrix(assumedIntercorr, nrow = length(psCombined[[i]]), ncol = length(psCombined[[i]]))
+  diag(corMatrix) <- 1
+  pStudyStouffer[[i]] <- tryCatch(stouffer(1 - psCombined[[i]],
+                                           R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
+<<<<<<< HEAD
+                                           adjust = "empirical", size = 10000)$p, error = function(e) NULL)
+  pStudyFisher[[i]] <- tryCatch(fisher(1 - psCombined[[i]],
+                                       R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
+                                       adjust = "empirical", size = 10000)$p, error = function(e) NULL)
+=======
+                                           adjust = "empirical", size = 1000)$p, error = function(e) NULL)
+  pStudyFisher[[i]] <- tryCatch(fisher(1 - psCombined[[i]],
+                                       R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
+                                       adjust = "empirical", size = 1000)$p, error = function(e) NULL)
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
+}
+names(pStudyStouffer) <- names(pStudyFisher) <- rownames(psCombined)
+pStudyStouffer <- unlist(pStudyStouffer)
+pStudyFisher <- unlist(pStudyFisher)
+
+list("Probabilities by Stouffer's method" =
+       list("<.001" = prop.table(table(pStudyStouffer<.001))[2]*100,
+          "<.01" = prop.table(table(pStudyStouffer<.01))[2]*100,
+          "<.05" = prop.table(table(pStudyStouffer<.05))[2]*100),
+     "Probabilities by Fisher's method" =
+<<<<<<< HEAD
+       list("<.001" = prop.table(table(pStudyFisher<.001))[2]*100,
+          "<.01" = prop.table(table(pStudyFisher<.01))[2]*100,
+          "<.05" = prop.table(table(pStudyFisher<.05))[2]*100))
+=======
+       list("<.001" = prop.table(table(pStudyStouffer<.001))[2]*100,
+          "<.01" = prop.table(table(pStudyStouffer<.01))[2]*100,
+          "<.05" = prop.table(table(pStudyStouffer<.05))[2]*100))
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
+
+(distrTests <- list(
   "K-S for Stouffer's p" = ks.test(pStudyStouffer,"punif", 0, 1),
   "K-S for Fisher's p" = ks.test(pStudyFisher,"punif", 0, 1),
   "A-D for Stouffer's p" = ad.test(pStudyStouffer, "punif", 0, 1),
   "A-D for Fisher's p" = ad.test(pStudyFisher, "punif", 0, 1)
-)
+))
 
-qqtest::qqtest(pStudyStouffer, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
+qqtest(pStudyStouffer, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
                xAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
                yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
-               bty = "n", drawPercentiles = T, nreps = 10000)
+               bty = "n", nreps = 100000, cex = .5)
 
+<<<<<<< HEAD
+qqtest(pStudyFisher, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
+=======
+qqtest::qqtest(pStudyFisher, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
+               xAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
+               yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
+               bty = "n", nreps = 100000, cex = .5)
 
 # Distribution overlap ----------------------------------------------------
-
-overlapOut <- NA
-for(i in 1:100){
-  y <- runif(10000, 0, 1)
-  overlapOut[i] <- overlap(list(pStudyStouffer,y), boundaries = list(from = 0, to = 1), plot = F)$OV
-}
-(overlapEst <- c("Overlap estimate mean" = mean(overlapOut),
-                 "Overlap estimate SD" = sd(overlapOut)))
+set.seed(1)
+y <- runif(1000000, 0, 1)
+overlap(list(pStudyStouffer,y), boundaries = list(from = 0, to = 1), plot = F)$OV
 
 # Overlap density plot
 plotData <- as.data.frame(cbind("pvalues" = c(pStudyStouffer, y), "Distribution" = c(rep(1, length(pStudyStouffer)), rep(2, length(y)))))
 plotData$Distribution <- as.factor(plotData$Distribution)
 ggplot(data = plotData, aes(x = pvalues, group = Distribution, fill = Distribution)) +
-  geom_density(adjust = 0.5, alpha = .5) + theme_classic()
+  geom_density(alpha = .5) + theme_classic()
+<<<<<<< HEAD
 
-# lack of variability in SDs
+
+# Lack of variability in SDs ----------------------------------------------
+# To do: speed up
+# rnormSdFun <- function(df){
+#   sd(rnorm(n = df[["n"]],mean =  df[["mean"]], sd = pooledSD))
+# }
+
+# set.seed(1)
+# d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% sd()
+# set.seed(1)
+# d %>% rowwise() %>% rnormSdFun()
+
+nSim <- 1000 # define the number of simulations
+=======
+
+
+# Lack of variability in SDs ----------------------------------------------
+# To do: speed up
+# rnormSdFun <- function(df){
+#   sd(rnorm(n = df[["n"]],mean =  df[["mean"]], sd = pooledSD))
+# }
+
+# set.seed(1)
+# d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% sd()
+# set.seed(1)
+# d %>% rowwise() %>% rnormSdFun()
+
 nSim <- 10 # define the number of simulations
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 theoreticalSDSD <- theoreticalRangeSD <- empiricalSDSD <- empiricalRangeSD <- data.frame(NA)
 listTheoreticalSDSD <- listTheoreticalRangeSD <- list(NA)
+set.seed(1)
+system.time(for(n in 1:nSim){
+              for(i in 1:max(data$id)){
+                for(j in 1:max(data$variable)){
+                  d <- data %>% filter(id == i, variable == j) # subset rows for each variable within each independent sample
+                  pooledSD <- mean(d$sd) # compute pooled SD (assuming the null)
+                  empiricalSDSD[i,j] <- sd(d$sd) # compute sd of sd
+                  theoreticalSDSD[i,j] <- d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% sd()
+                }
+              }
+              listTheoreticalSDSD[[n]] <- theoreticalSDSD
+            }
+)
+
 set.seed(1)
 for(n in 1:nSim){
   for(i in 1:max(data$id)){
     for(j in 1:max(data$variable)){
       d <- data %>% filter(id == i, variable == j) # subset rows for each variable within each independent sample
       pooledSD <- mean(d$sd) # compute pooled SD (assuming the null)
-      empiricalSDSD[i,j] <- sd(d$sd) # compute sd of sd
       empiricalRangeSD[i,j] <- diff(range(d$sd)) # compute range of sd
-      theoreticalSDSD[i,j] <- d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% sd()
       theoreticalRangeSD[i,j] <- d %>% rowwise() %>% transmute(sd(rnorm(n, mean, pooledSD))) %>% unlist() %>% range() %>% diff()
     }
   }
-  listTheoreticalSDSD[[n]] <- theoreticalSDSD
-  listTheoreticalRangeSD[[n]] <- theoreticalRangeSD %>% mutate_if(is.numeric, list(~na_if(., -Inf)))
+  listTheoreticalRangeSD[[n]] <- theoreticalRangeSD %>% mutate_if(is.numeric, list(~na_if(., -Inf))) # remove -Inf values
 }
 
 # average over lists of sdsds and compute the probability of observing equal or smaller degree of variability in SDs
 # higher probability = smaller than expected variability
 excessSmallSDs <-  Reduce("+", lapply(listTheoreticalSDSD, function(x){x >= empiricalSDSD}))/nSim
 excessSmallRanges <-  Reduce("+", lapply(listTheoreticalRangeSD, function(x){x >= empiricalRangeSD}))/nSim
-rownames(excessSmallSDs) <- rownames(excessSmallRanges) <- rownames(pMC)
+rownames(excessSmallSDs) <- rownames(excessSmallRanges) <- rownames(ps)
 excessSmallSDs
 excessSmallRanges
 
 # find the smaller p-value for the SD and Ranges matrices (picking the less extreme p-value)
-selectRangeSD <- matrix(nrow = dim(excessSmallSDs)[1], ncol = dim(excessSmallSDs)[2])
+<<<<<<< HEAD
+# insuffVariability <- matrix(nrow = dim(excessSmallSDs)[1], ncol = dim(excessSmallSDs)[2])
+# for(i in 1:dim(excessSmallSDs)[1]){
+#   for(j in 1:dim(excessSmallSDs)[2]){
+#     insuffVariability[i,j] <- ifelse(is.na(excessSmallSDs[i,j]), NA, c(excessSmallSDs[i,j], excessSmallRanges[i,j])[which.max(abs(c(excessSmallSDs[i,j], excessSmallRanges[i,j]) - 1))])
+#   }
+# }
+# rownames(insuffVariability) <- rownames(ps)
+# insuffVariability
+
+# Average into trial-level probabilities
+# studyInsuffVariability <- apply(insuffVariability, 1, mean, na.rm = T)
+# names(studyInsuffVariability) <- rownames(ps)
+#
+# studyInsuffVariability
+# pStudyStouffer
+
+# Compensate for the lack of precision in MC calculation in p-values
+
+insuffVariability <- excessSmallSDs #delete if analysis based on ranges is carried out
+insuffVariability <- as.data.frame(ifelse(as.matrix(insuffVariability) == 0, .0005, ifelse(as.matrix(insuffVariability) == 1, .9995, as.matrix(insuffVariability))))
+
+insuffVariabilityTrial <- list()
+for(i in gsub("/.*", "", rownames(ps))){
+  insuffVariabilityTrial[[i]] <- insuffVariability %>% rownames_to_column() %>% filter(grepl(i, rowname, fixed = TRUE)) %>% select(-rowname) %>% unlist()
+}
+insuffVariabilityTrial <- lapply(insuffVariabilityTrial, function(x){as.numeric(x[!is.na(x)])})
+
+sdStudyStouffer <- list(NA)
+sdStudyFisher <- list(NA)
+for(i in 1:length(insuffVariabilityTrial)){
+  corMatrix <- matrix(assumedIntercorr, nrow = length(insuffVariabilityTrial[[i]]), ncol = length(insuffVariabilityTrial[[i]]))
+  diag(corMatrix) <- 1
+  sdStudyStouffer[[i]] <- tryCatch(stouffer(1 - insuffVariabilityTrial[[i]],
+                                           R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
+                                           adjust = "empirical", size = 100000)$p, error = function(e) NULL)
+  sdStudyFisher[[i]] <- tryCatch(fisher(1 - insuffVariabilityTrial[[i]],
+                                       R = mvnconv(corMatrix, target = "p", cov2cor = T, side = 2),
+                                       adjust = "empirical", size = 100000)$p, error = function(e) NULL)
+}
+names(sdStudyStouffer) <- names(sdStudyFisher) <- rownames(insuffVariabilityTrial)
+sdStudyStouffer <- unlist(sdStudyStouffer)
+sdStudyFisher <- unlist(sdStudyFisher)
+
+# read RDS objects
+sdStudyStouffer <- readRDS("sdStudyStouffer.RDS")
+sdStudyFisher <- readRDS("sdStudyFisher.RDS")
+
+mSdCor <- .3
+pSdStouffer <- apply(cbind(pStudyFisher,sdStudyFisher), 1, function(x){
+  stouffer(x, R = mvnconv(matrix(c(1, mSdCor, mSdCor, 1), nrow = 2, ncol = 2),
+                          target = "p", cov2cor = T, side = 2), adjust = "empirical", size = 10000)$p})
+pSdFisher <- apply(cbind(pStudyFisher,sdStudyFisher), 1, function(x){
+  fisher(x, R = mvnconv(matrix(c(1, mSdCor, mSdCor, 1), nrow = 2, ncol = 2),
+                        target = "p", cov2cor = T, side = 2), adjust = "empirical", size = 10000)$p})
+
+list("Probabilities by Stouffer's method" =
+       list("<.001" = prop.table(table(pSdStouffer<.001))[2]*100,
+            "<.01" = prop.table(table(pSdStouffer<.01))[2]*100,
+            "<.05" = prop.table(table(pSdStouffer<.05))[2]*100),
+     "Probabilities by Fisher's method" =
+       list("<.001" = prop.table(table(pSdFisher<.001))[2]*100,
+            "<.01" = prop.table(table(pSdFisher<.01))[2]*100,
+            "<.05" = prop.table(table(pSdFisher<.05))[2]*100))
+
+qqtest(pSdStouffer, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
+               xAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
+               yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
+               bty = "n", nreps = 100000, cex = .5)
+
+qqtest(pSdFisher, dist = "uniform", legend = T, xlim = c(0, 1), ylim = c(0, 1),
+               xAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
+               yAxisProbs = c(0.2, 0.4, 0.6, 0.8, 1),
+               bty = "n", nreps = 100000, cex = .5)
+=======
+insuffVariability <- matrix(nrow = dim(excessSmallSDs)[1], ncol = dim(excessSmallSDs)[2])
 for(i in 1:dim(excessSmallSDs)[1]){
   for(j in 1:dim(excessSmallSDs)[2]){
-    selectRangeSD[i,j] <- ifelse(is.na(excessSmallSDs[i,j]), NA, c(excessSmallSDs[i,j], excessSmallRanges[i,j])[which.max(abs(c(excessSmallSDs[i,j], excessSmallRanges[i,j]) - 1))])
+    insuffVariability[i,j] <- ifelse(is.na(excessSmallSDs[i,j]), NA, c(excessSmallSDs[i,j], excessSmallRanges[i,j])[which.max(abs(c(excessSmallSDs[i,j], excessSmallRanges[i,j]) - 1))])
   }
 }
-rownames(selectRangeSD) <- rownames(pMC)
-selectRangeSD
+rownames(insuffVariability) <- rownames(ps)
+insuffVariability
+
+# Average into trial-level probabilities
+studyInsuffVariability <- apply(insuffVariability, 1, mean, na.rm = T)
+names(studyInsuffVariability) <- rownames(ps)
+
+studyInsuffVariability
+pStudyStouffer
+
+>>>>>>> 742d9e0b6d1078394a6e17e6efcd2fe6d38d0441
 
 
 # GRIM & GRIMMER inconsistencies ------------------------------------------
@@ -195,16 +384,21 @@ paste(round(((table(dat$grimmer)[1] - table(dat$grim)[1])/table(!is.na(dat$discr
 paste(round((table(dat$grimmer)[1]/table(!is.na(dat$discreteItemsCount))[2])*100, 2), "%")
 
 
+
 ######################################
 # Graveyard
 ######################################
+# calculate p-values using regular ANOVA method
+pAnova <- get_anova_p_vals(data)
 
-
-hist(pMC[pMC>.05], breaks = 100)
-hist(pC[pC>.05], breaks = 100)
-
-view(round(as.matrix(pMC, dimnames = NULL), 3))
-view(round(as.matrix(pAnova, dimnames = NULL), 3))
+# find the matrix value closer to .5
+ps <- matrix(nrow = dim(pMC)[1], ncol = dim(pMC)[2])
+for(i in 1:dim(pMC)[1]){
+  for(j in 1:dim(pMC)[2]){
+    ps[i,j] <- ifelse(is.na(pMC[i,j]), NA, c(pMC[i,j], pAnova[i,j])[which.min(abs(c(pMC[i,j], pAnova[i,j]) - .5))])
+  }
+}
+rownames(ps) <- rownames(pMC)
 
 allmetap(beckerp, method = "all")
 

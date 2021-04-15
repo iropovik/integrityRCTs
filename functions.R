@@ -53,7 +53,8 @@ sim_distr <- function(m, data, plot_flag){
   naming <- unique(data[,10])
   data <- data[,c(1:7, 9)]
   # Compute unbiased sd ------------------------------------------------------------
-  data[,6] <- s.u(data[,6], data[,4])
+  data[,6] <- ifelse(data[,4] < 300, s.u(data[,6], data[,4]), data[,6])
+  #round(s.u(data[,6], data[,4]), data[,8])
   # Number of trials ----------------------------------------------------------
   max_trial <- max(data[,1])
 
@@ -193,7 +194,7 @@ sim_distr <- function(m, data, plot_flag){
 # function to calculate p-values from summary statistics using ANOVA
 get_anova_p_vals = function(data){
   data <- as.data.frame(data)[,-c(9:10)]
-  data[,6] <- s.u(data[,6], data[,4])
+  data[,6] <- ifelse(data[,4] < 300, s.u(data[,6], data[,4]), data[,6])
   names(data) = c("trial", "measure", "Group", "number in group", "mean", "sd", "decm", "decsd")
   MaxC1 <- NA
   Maxtrial <- max(data$trial, na.rm = T)
