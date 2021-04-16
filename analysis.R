@@ -60,7 +60,7 @@ paste(round(table(as.matrix(ps) < .05)[2]/sum(table(as.matrix(ps) < .05))*100, 3
 
 # choose a single p-value for every independent sample and permute
 set.seed(1)
-nIterations <- 100
+nIterations <- 10
 pSets <- matrix(nrow = nrow(ps), ncol = nIterations)
 for(i in 1:nIterations){  # excluding significant p-values and and rescaling the non-significant p-values to (0, 1)
   pSets[,i] <- apply(ifelse(as.matrix(ps) < .05, NA, (as.matrix(ps)-0.05)/0.95), 1,
@@ -103,9 +103,9 @@ ggplot(mapping = aes(pSetsFisher, fill = pSetsFisher)) + geom_density(adjust = 0
 
 # show that the distribution of stouffer's p is uniform under uniform distribution of p-values
 # yy <- NA
-# for(i in 1:100){
+# for(i in 1:10000){
 #   xx <- runif(10000, 0, 1)
-#   yy[i] <- 1 - pnorm(sum(sapply(xx, qnorm), na.rm = T)/sqrt(length(xx[!is.na(xx)])))
+#   yy[i] <- 1 - pnorm(sum(sapply(xx, qnorm))/sqrt(length(xx)))
 # }
 # hist(yy)
 
@@ -168,7 +168,7 @@ overlap(list(pStudyStouffer,y), boundaries = list(from = 0, to = 1), plot = F)$O
 plotData <- as.data.frame(cbind("pvalues" = c(pStudyStouffer, y), "Distribution" = c(rep(1, length(pStudyStouffer)), rep(2, length(y)))))
 plotData$Distribution <- as.factor(plotData$Distribution)
 ggplot(data = plotData, aes(x = pvalues, group = Distribution, fill = Distribution)) +
-  geom_density(alpha = .5) + theme_classic()
+  geom_density(adjust = .7,alpha = .5) + theme_classic()
 
 
 # Lack of variability in SDs ----------------------------------------------
@@ -277,11 +277,13 @@ pSdFisher <- apply(cbind(pStudyFisher,sdStudyFisher), 1, function(x){
                         target = "p", cov2cor = T, side = 2), adjust = "empirical", size = 10000)$p})
 
 list("Probabilities by Stouffer's method" =
-       list("<.001" = prop.table(table(pSdStouffer<.001))[2]*100,
+       list("<.0001" = prop.table(table(pSdStouffer<.0001))[2]*100,
+            "<.001" = prop.table(table(pSdStouffer<.001))[2]*100,
             "<.01" = prop.table(table(pSdStouffer<.01))[2]*100,
             "<.05" = prop.table(table(pSdStouffer<.05))[2]*100),
      "Probabilities by Fisher's method" =
-       list("<.001" = prop.table(table(pSdFisher<.001))[2]*100,
+       list("<.0001" = prop.table(table(pSdFisher<.0001))[2]*100,
+            "<.001" = prop.table(table(pSdFisher<.001))[2]*100,
             "<.01" = prop.table(table(pSdFisher<.01))[2]*100,
             "<.05" = prop.table(table(pSdFisher<.05))[2]*100))
 
@@ -309,24 +311,24 @@ paste(round((table(dat$grimmer)[1]/table(!is.na(dat$discreteItemsCount))[2])*100
 # Graveyard
 ######################################
 # calculate p-values using regular ANOVA method
-pAnova <- get_anova_p_vals(data)
-
-# find the matrix value closer to .5
-ps <- matrix(nrow = dim(pMC)[1], ncol = dim(pMC)[2])
-for(i in 1:dim(pMC)[1]){
-  for(j in 1:dim(pMC)[2]){
-    ps[i,j] <- ifelse(is.na(pMC[i,j]), NA, c(pMC[i,j], pAnova[i,j])[which.min(abs(c(pMC[i,j], pAnova[i,j]) - .5))])
-  }
-}
-rownames(ps) <- rownames(pMC)
-
-allmetap(beckerp, method = "all")
-
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-
-BiocManager::install("EmpiricalBrownsMethod")
-library(EmpiricalBrownsMethod)
-
-# the call to combine p-values
-empiricalBrownsMethod(data_matrix=glypDat, p_values=glypPvals, extra_info=TRUE)
+# pAnova <- get_anova_p_vals(data)
+#
+# # find the matrix value closer to .5
+# ps <- matrix(nrow = dim(pMC)[1], ncol = dim(pMC)[2])
+# for(i in 1:dim(pMC)[1]){
+#   for(j in 1:dim(pMC)[2]){
+#     ps[i,j] <- ifelse(is.na(pMC[i,j]), NA, c(pMC[i,j], pAnova[i,j])[which.min(abs(c(pMC[i,j], pAnova[i,j]) - .5))])
+#   }
+# }
+# rownames(ps) <- rownames(pMC)
+#
+# allmetap(beckerp, method = "all")
+#
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+#
+# BiocManager::install("EmpiricalBrownsMethod")
+# library(EmpiricalBrownsMethod)
+#
+# # the call to combine p-values
+# empiricalBrownsMethod(data_matrix=glypDat, p_values=glypPvals, extra_info=TRUE)
